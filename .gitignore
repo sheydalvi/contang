@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+venv/
+.env/
+
+.ipynb_checkpoints
+
+*.csv
+*.h5
+*.xlsx
+*.db
+*.log
+
+.DS_Store
+Thumbs.db
