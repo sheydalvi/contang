@@ -11,7 +11,7 @@ def fit_circle(df):
 
 def compute_contact_angle(z_top, r_top, z_bot, r_bot):
     """
-    computes the contact angle in degrees using top and bottom circle fits
+    computes the contact angle in degrees using top and bottom circle fits.
     """
     zp = abs(z_bot - z_top)
     rp = abs(r_bot - r_top)
