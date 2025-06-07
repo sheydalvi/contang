@@ -2,10 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from contang.data_loader import load_2d_csv, load_3d_csv, sq, plane_without_particle
-from contang.interpolation import interpolate_1d, interpolate_2d, fit_plane
-from contang.geometry import select_contact_ring
-from contang.angle_calc import fit_circle, compute_contact_angle
+import contang.main as cg
 
 # layout and config
 st.set_page_config(page_title="Contact Angle Estimator", layout="wide")
@@ -16,18 +13,13 @@ st.sidebar.header("I. Upload Your Data")
 csv_2d = st.sidebar.file_uploader("Upload 2D CSV", type="csv")
 csv_3d = st.sidebar.file_uploader("Upload 3D CSV", type="csv")
 
-# st.sidebar.header("II. Plane Fit Parameters")
-# a = st.sidebar.number_input("a (slope in x)", value=0.2)
-# b = st.sidebar.number_input("b (slope in y)", value=-0.3)
-# d = st.sidebar.number_input("d (offset)", value=1.0)
-
 st.sidebar.header("II. Bottom Contact Circle Bounds")
-smalmax = st.sidebar.number_input("Highest Distance", value=1.75)
-smalmin = st.sidebar.number_input("Lowest Distance", value=1.5)
+bot_upper_bound = st.sidebar.number_input("Maximum Distance", value=1.75)
+bot_lower_bound = st.sidebar.number_input("Minimum Distance", value=1.5)
 
 st.sidebar.header("III. Top Contact Circle Bounds")
-bigmax = st.sidebar.number_input("Highest Distance", value=0.75)
-bigmin = st.sidebar.number_input("Lowest Distnace", value=0.5)
+top_upper_bound = st.sidebar.number_input("Maximum Distance", value=0.75)
+top_lower_bound = st.sidebar.number_input("Minimum Distnace", value=0.5)
 
 st.sidebar.header("IV. Particle Size")
 R = st.sidebar.number_input("Radius", value=16)
@@ -42,13 +34,8 @@ if run_analysis:
         st.error("Please upload both 2D and 3D CSV files before running.")
     else:
         with st.spinner("Loading and processing data..."):
-            # load 2D and 3D data
-            R = 16
-            x, y = load_2d_csv(csv_2d)
-            x3, y3, z3 = load_3d_csv(csv_3d)
-
-            df_3d = pd.DataFrame({'x': x3, 'y': y3, 'z': z3})
-
+            # load raw data and interpolate
+            x, y, new_x, y_interp, x3, y3, z3, grid_x, grid_y, grid_z, df = cg.load_and_interpolate_data(csv_2d, csv_3d)
         st.success("Data loaded!")
 
         st.subheader("2D Contour Plot")
@@ -56,52 +43,46 @@ if run_analysis:
         ax1[0].scatter(x, y, s=5)
         ax1[0].set_aspect('equal')
         ax1[0].set_title("2D Interface Profile")
-        interpolated = interpolate_2d(x3, y3, z3, resolution=1000)
-        ax1[1].scatter(interpolated[0], interpolated[2], s=5)
+        ax1[1].scatter(new_x, y_interp, s=5)
         ax1[1].set_aspect('equal')
         ax1[1].set_title("2D Interface Profile interpolated")
         st.pyplot(fig1)
 
         st.subheader("3D Contour Projection (Top View)")
         fig2, ax2 = plt.subplots()
-        ax2.scatter(x3, y3, s=1)
+        contour = ax2.contourf(grid_x, grid_y, grid_z, levels=30, cmap='plasma', alpha=0.5)
+        fig2.colorbar(contour, ax=ax2, label='Z')
         ax2.set_aspect('equal')
         ax2.set_title("Top View of 3D Surface")
         st.pyplot(fig2)
         
-
-        tobe_fitted = plane_without_particle(df_3d, R)
-        xf, yf, zf = list (tobe_fitted['x']), list (tobe_fitted['y']), list (tobe_fitted['z'])
-        fit_params = fit_plane(xf, yf, zf)
+        # fit the plane
+        fit_params = cg.fit_surface_plane(df, R)
         
         st.write(fit_params)
-        st.success("the plane is fitted!")
+        st.success("The plane is fitted!")
 
-        # add plot of the fit
+        # plot of the fitted plane to be added
 
         with st.spinner("Selecting top and bottom contact rings..."):
-            top_df = select_contact_ring(df_3d, fit_params, bigmin, bigmax)
-            bot_df = select_contact_ring(df_3d, fit_params, smalmin, smalmax)
-            top_df = top_df.loc[sq(top_df) < 19**2].reset_index(drop=True)
+            top_df, bot_df = cg.select_top_ring(df, fit_params, R, top_lower_bound, top_upper_bound, bot_lower_bound, bot_upper_bound)
 
         st.success("Contact rings identified.")
 
         st.subheader("Top and Bottom Contact Ring Plots")
         fig3, ax3 = plt.subplots(1, 2, figsize=(12, 5))
-        ax3[0].scatter(top_df['x'], top_df['z'], s=10, color='red')
+        ax3[0].scatter(top_df['x'], top_df['y'], s=10, color='red')
         ax3[0].set_title("Top Contact Ring")
         ax3[0].set_aspect('equal')
 
-        ax3[1].scatter(bot_df['x'], bot_df['z'], s=10, color='blue')
+        ax3[1].scatter(bot_df['x'], bot_df['y'], s=10, color='blue')
         ax3[1].set_title("Bottom Contact Ring")
         ax3[1].set_aspect('equal')
 
         st.pyplot(fig3)
 
         with st.spinner("Fitting circles and calculating angle..."):
-            z_top, r_top = fit_circle(top_df)
-            z_bot, r_bot = fit_circle(bot_df)
-            angle = compute_contact_angle(z_top, r_top, z_bot, r_bot)
+            angle = cg.calculate_angle_from_rings(top_df, bot_df)
 
         st.success("Analysis complete!")
 
